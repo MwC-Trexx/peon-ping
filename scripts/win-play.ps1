@@ -73,6 +73,15 @@ function Invoke-NativeMediaPlayback {
 
 # Prefer native Windows playback for formats with reliable built-in codec support.
 # Exotic formats still fall through to the CLI player chain.
+# ponytail: ffplay is more reliable across environments (including headless/server),
+# so check for it first - WPF MediaPlayer hangs in headless environments.
+$ffplay = Get-Command ffplay -ErrorAction SilentlyContinue
+if ($ffplay -and $path -match '\.(wav|mp3|wma)$') {
+    $ffVol = [math]::Max(0, [math]::Min(100, [int]($vol * 100)))
+    & $ffplay.Source -nodisp -autoexit -volume $ffVol $path 2>$null
+    exit 0
+}
+
 if ($path -match '\.(wav|mp3|wma)$') {
     if (Invoke-NativeMediaPlayback -Path $path -vol $vol) {
         exit 0
