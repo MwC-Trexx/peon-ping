@@ -690,8 +690,8 @@ Describe "Category C: OpenCode Installer" {
         $script:opencodeContent | Should -Match 'peonping\.github\.io/registry'
     }
 
-    It "uses LOCALAPPDATA for Windows-native path" {
-        $script:opencodeContent | Should -Match 'LOCALAPPDATA'
+    It "uses XDG-style path (~/.config/opencode/) for OpenCode compatibility" {
+        $script:opencodeContent | Should -Match 'USERPROFILE.*\.config\\opencode'
     }
 }
 
