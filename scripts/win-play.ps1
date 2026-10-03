@@ -71,7 +71,8 @@ function Invoke-NativeMediaPlayback {
     return $false
 }
 
-# Native Windows playback for wav/mp3/wma; ffplay first in CLI chain for exotic formats.
+# Prefer native Windows playback for formats with reliable built-in codec support.
+# Exotic formats still fall through to the CLI player chain.
 if ($path -match '\.(wav|mp3|wma)$') {
     if (Invoke-NativeMediaPlayback -Path $path -vol $vol) {
         exit 0
