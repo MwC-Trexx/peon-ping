@@ -69,13 +69,23 @@ for await (const event of ctx.event.subscribe()) {
   execution, not just tool errors.
 - `session.created` identifies the new session with `data.sessionID` and
   marks a child with `data.parentID`. Child lifecycle, permission and form
-  notifications are suppressed after creation has been observed.
+  notifications are suppressed after creation has been observed. For events
+  without a location, the host session lookup also identifies child sessions.
 - `form.created` nests its request under `data.form`: the adapter reads
   `data.form.id` and `data.form.sessionID`. Replies and cancellations use
   `data.id`. Form text, fields, answers and request IDs are never forwarded
   to the hook.
 - The stream covers the connected server. Events carrying a different
-  `location.directory` are ignored. Unscoped events remain eligible.
+  `location.directory` are ignored. Durable execution events have no location
+  envelope, so the adapter resolves their session through `ctx.session.get`
+  and compares its directory before forwarding. An unresolved directory is
+  ignored. Symlink aliases identify the same physical directory. If the host
+  loads multiple plugin instances for that directory, one instance owns the
+  bridge until its cleanup releases ownership to a surviving instance.
+- Cleanup aborts the event subscription and releases directory ownership.
+  A session lookup that finishes after cleanup cannot send a notification.
+  `session.deleted` silently clears state by its globally unique session ID
+  without retrieving a session that the host has already removed.
 
 These payloads were checked against the [OpenCode v2 session schema](https://github.com/anomalyco/opencode/blob/0a46301e36d7edd517dd89736acc5daf9c74898e/packages/schema/src/session-event.ts),
 [form schema](https://github.com/anomalyco/opencode/blob/0a46301e36d7edd517dd89736acc5daf9c74898e/packages/schema/src/form.ts)
@@ -104,6 +114,17 @@ a script path containing spaces, quotes and Unicode. Windows Pester checks
 run separately in the main test workflow. Both Windows jobs must pass
 before the native bridge is shipped.
 
+On 2026-10-04, the exact adapter was loaded by the official
+`@opencode/cli-darwin-arm64@2.0.22` binary in isolated temporary HOME and XDG
+directories. The [official update manifest](https://opencode.ai/update/api/latest/cli/npm)
+identified build source `05018b8862a8fc198ec9810aafd397c96bb7d86e`.
+Actual host events verified forms, permissions, successful and failed
+executions, child suppression, routing between two projects and a `/tmp`
+symlink alias. Three real location reloads produced one notification each;
+all 12 plugin setups received cleanup and closed their streams. A local
+OpenAI-compatible fixture supplied model responses without external model
+calls. These macOS checks complement the required native Windows jobs.
+
 This adapter targets OpenCode v2. OpenCode v1 uses a different export and
 event contract. The Kilo installers download the preserved v1 server
 adapter from `adapters/kilo/peon-ping.ts` directly, so the OpenCode v2
@@ -114,3 +135,9 @@ and the [Kilo host bridge](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be6
 The shell installer integration test loads the installed plugin and
 checks `session.idle` delivery through its real hook process. Windows
 installer behavior is covered by `tests/opencode-installer.Tests.ps1`.
+On 2026-10-04, the exact dedicated adapter also loaded from the global plugin
+directory in the official `@kilocode/cli-darwin-arm64@7.8.3` binary. Actual
+`session.created` events carried `properties.info`; a primary session
+delivered `SessionStart` through Bash, and a child carrying `parentID`
+remained silent. The host was isolated in temporary HOME and XDG directories
+and terminated after validation.

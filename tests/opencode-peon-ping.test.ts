@@ -35,13 +35,24 @@ import plugin from "../adapters/opencode/peon-ping.js"
  * Drives the plugin through a fake v2 host context and yields the events fed
  * to it, so a test can step the stream one event at a time.
  */
-async function createHost(events: Array<Record<string, any>> = []) {
+async function createHost(events: Array<Record<string, any>> = [], sessionDirectory = "/tmp/example-project", sessionLookup?: Promise<Record<string, any>>) {
   const queue = [...events]
   let wake: (() => void) | undefined
   let signal: AbortSignal
 
   const ctx: any = {
     location: { directory: "/tmp/example-project" },
+    session: {
+      get: vi.fn(async ({ sessionID }: { sessionID: string }) => sessionLookup ?? ({
+        id: sessionID,
+        projectID: "fixture-project",
+        title: "Fixture session",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: 0, updated: 0 },
+        location: { directory: sessionDirectory },
+      })),
+    },
     event: {
       subscribe: async function* (opts: { signal: AbortSignal }) {
         signal = opts.signal
@@ -74,6 +85,7 @@ async function createHost(events: Array<Record<string, any>> = []) {
       await new Promise((resolve) => setTimeout(resolve, 0))
     },
     cleanup,
+    getSession: ctx.session.get,
     aborted: () => signal?.aborted,
   }
 }
@@ -360,5 +372,56 @@ describe("peon-ping event mapping", () => {
     })
     host.cleanup?.()
     expect(hookEvents()).toEqual(["PermissionRequest"])
+  })
+
+  it("resolves an unscoped execution's session before forwarding a global event", async () => {
+    const host = await createHost([], "/tmp/another-project")
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_elsewhere" } })
+    await host.emit({ type: "session.execution.succeeded", data: { sessionID: "ses_elsewhere" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual([])
+  })
+
+  it("forwards each global event once when two plugin instances share a project", async () => {
+    const first = await createHost()
+    const second = await createHost()
+    const event = { id: "evt_shared", type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } }
+    await first.emit(event)
+    await second.emit(event)
+    first.cleanup?.()
+    second.cleanup?.()
+    expect(hookEvents()).toEqual(["PermissionRequest"])
+  })
+
+  it("allows a surviving project instance to own notifications after cleanup", async () => {
+    const first = await createHost()
+    const second = await createHost()
+    first.cleanup?.()
+    await second.emit({ type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } })
+    second.cleanup?.()
+    expect(hookEvents()).toEqual(["PermissionRequest"])
+  })
+
+  it("clears deleted session state even when the host can no longer retrieve it", async () => {
+    const host = await createHost()
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    host.getSession.mockRejectedValueOnce(new Error("Session was deleted"))
+    await host.emit({ type: "session.deleted", data: { sessionID: "ses_a" } })
+    host.getSession.mockReset()
+    host.getSession.mockResolvedValue({ id: "ses_a", location: { directory: "/tmp/example-project" } })
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual(["SessionStart", "SessionStart"])
+  })
+
+  it("does not deliver an in-flight session lookup after cleanup", async () => {
+    let resolveSession!: (session: Record<string, any>) => void
+    const lookup = new Promise<Record<string, any>>((resolve) => { resolveSession = resolve })
+    const host = await createHost([], "/tmp/example-project", lookup)
+    await host.emit({ type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } })
+    host.cleanup?.()
+    resolveSession({ id: "ses_a", location: { directory: "/tmp/example-project" } })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(hookEvents()).toEqual([])
   })
 })

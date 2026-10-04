@@ -23,6 +23,12 @@ import * as os from "node:os"
 import { spawn } from "node:child_process"
 
 const MAX_PENDING_QUESTION_IDS = 100
+const LOCATION_OWNERS = Symbol.for("peon-ping.opencode.location-owners")
+const SCOPED_EVENT_TYPES = new Set([
+  "session.created", "session.deleted", "session.execution.started",
+  "session.execution.succeeded", "session.execution.failed", "session.execution.interrupted",
+  "permission.asked", "form.created", "form.replied", "form.cancelled",
+])
 
 function findPeonScript(windows: boolean): string | null {
   const filename = windows ? "peon.ps1" : "peon.sh"
@@ -79,6 +85,22 @@ export default {
     }
 
     const cwd = ctx?.location?.directory || process.cwd()
+    function directoryIdentity(directory: string): string {
+      let resolved = path.resolve(directory)
+      // Hosts can retain the caller's symlink path in event locations while
+      // loading the plugin at its canonical path (for example /tmp on macOS).
+      try { resolved = fs.realpathSync(resolved) } catch {}
+      return windows ? resolved.toLowerCase() : resolved
+    }
+    const pluginDirectory = directoryIdentity(cwd)
+    // The host may load one physical directory through more than one alias.
+    // Keep a single active bridge for that directory across plugin generations.
+    const shared = globalThis as any
+    const locationOwners: Map<string, Set<object>> = shared[LOCATION_OWNERS] ??= new Map()
+    const owners = locationOwners.get(pluginDirectory) ?? new Set<object>()
+    const owner = {}
+    owners.add(owner)
+    locationOwners.set(pluginDirectory, owners)
     const sessionId = `oc-${Date.now()}`
     const subagentSessionIds = new Set<string>()
     const busySessions = new Set<string>()
@@ -122,28 +144,38 @@ export default {
      * `docs/opencode-v2-events.md` for the full table. The cases below are the
      * only v2 events that map onto a peon-ping category.
      */
-    function handle(event: V2Event): void {
-      if (event.location?.directory) {
-        const eventDirectory = path.resolve(event.location.directory)
-        const pluginDirectory = path.resolve(cwd)
-        if (windows
-          ? eventDirectory.toLowerCase() !== pluginDirectory.toLowerCase()
-          : eventDirectory !== pluginDirectory) return
-      }
+    async function handle(event: V2Event): Promise<void> {
+      if (!SCOPED_EVENT_TYPES.has(event.type) || owners.values().next().value !== owner) return
       const data = event.data ?? {}
+      const sid = data.sessionID ?? data.form?.sessionID
+      // Deletion is silent cleanup. The host has already removed the session,
+      // so a location lookup can no longer succeed. Other projects hold no
+      // state for this globally unique session ID and are safe to clear too.
+      if (event.type === "session.deleted") {
+        if (typeof sid === "string") {
+          subagentSessionIds.delete(sid)
+          busySessions.delete(sid)
+          sessionStarts.delete(sid)
+        }
+        return
+      }
+      let eventDirectory = event.location?.directory ?? data.location?.directory
+      let parentID = data.parentID
+      // Durable execution events have no location envelope. Resolve the
+      // session through the actual host rather than treating them as local.
+      if (!eventDirectory && typeof sid === "string") {
+        const session = await ctx.session.get({ sessionID: sid })
+        if (owners.values().next().value !== owner) return
+        eventDirectory = session.location?.directory
+        parentID = session.parentID
+        if (!eventDirectory) return
+      }
+      if (eventDirectory && directoryIdentity(eventDirectory) !== pluginDirectory) return
+      if (parentID && typeof sid === "string") subagentSessionIds.add(sid)
 
       switch (event.type) {
         case "session.created": {
           if (data.parentID && typeof data.sessionID === "string") subagentSessionIds.add(data.sessionID)
-          break
-        }
-
-        case "session.deleted": {
-          if (typeof data.sessionID === "string") {
-            subagentSessionIds.delete(data.sessionID)
-            busySessions.delete(data.sessionID)
-            sessionStarts.delete(data.sessionID)
-          }
           break
         }
 
@@ -232,7 +264,7 @@ export default {
     void (async () => {
       for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
         try {
-          handle(event as V2Event)
+          await handle(event as V2Event)
         } catch (err: any) {
           console.error("[peon-ping] failed to handle event:", err?.message ?? err)
         }
@@ -241,6 +273,10 @@ export default {
       if (!controller.signal.aborted) console.error("[peon-ping] event stream ended:", err?.message ?? err)
     })
 
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      owners.delete(owner)
+      if (owners.size === 0) locationOwners.delete(pluginDirectory)
+    }
   },
 }

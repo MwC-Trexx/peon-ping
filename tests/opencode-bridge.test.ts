@@ -13,7 +13,7 @@ afterEach(() => {
   if (temporaryDirectory) fs.rmSync(temporaryDirectory, { recursive: true, force: true })
 })
 
-it("delivers UTF-8 stdin JSON to the native hook executable with a literal script path", async () => {
+it.each(["direct", "symlink"])("delivers UTF-8 stdin JSON through a literal native script path and %s project location", async (locationKind) => {
   temporaryDirectory = fs.mkdtempSync(path.join(process.env.PEON_TEST_TMPDIR || os.tmpdir(), "peon-opencode-bridge-"))
   const hookDirectory = path.join(temporaryDirectory, "hook $bridge 'α space")
   fs.mkdirSync(hookDirectory)
@@ -34,11 +34,15 @@ $reader.Close()
   }
 
   const directory = path.join(temporaryDirectory, "project 日本語")
+  fs.mkdirSync(directory)
+  const eventDirectory = locationKind === "direct" ? directory : path.join(temporaryDirectory, "project alias")
+  if (locationKind === "symlink") fs.symlinkSync(directory, eventDirectory, "junction")
   cleanup = await plugin.setup({
     location: { directory },
+    session: { get: async () => ({ location: { directory } }) },
     event: {
       subscribe: async function* () {
-        yield { type: "permission.asked", data: { sessionID: "ses_primary", id: "private_request" } }
+        yield { type: "permission.asked", location: { directory: eventDirectory }, data: { sessionID: "ses_primary", id: "private_request" } }
       },
     },
   })
@@ -54,4 +58,4 @@ $reader.Close()
       source: "opencode",
     })
   }, { timeout: 5000 })
-})
+}, 10000)
