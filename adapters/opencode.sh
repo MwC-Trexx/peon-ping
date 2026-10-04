@@ -19,8 +19,14 @@ set -euo pipefail
 
 PLUGIN_URL="https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/opencode/peon-ping.ts"
 OPENCODE_PLUGINS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/plugins"
-PEON_SH_CANDIDATES=(
-  "$HOME/.claude/hooks/peon-ping/peon.sh"
+PEON_SH_CANDIDATES=()
+if [ -n "${CLAUDE_PEON_DIR:-}" ]; then
+  PEON_SH_CANDIDATES+=("$CLAUDE_PEON_DIR/peon.sh")
+fi
+PEON_SH_CANDIDATES+=(
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/peon-ping/peon.sh"
+  "$HOME/.openpeon/hooks/peon-ping/peon.sh"
+  "$HOME/.openpeon/peon.sh"
   "$HOME/.openclaw/hooks/peon-ping/peon.sh"
 )
 

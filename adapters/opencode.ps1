@@ -22,11 +22,9 @@ $RegistryUrl = "https://peonping.github.io/registry/index.json"
 $DefaultPack = "peon"
 
 $PluginsDir = if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "opencode\plugins" }
-              elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "opencode\plugins" }
               else { Join-Path $env:USERPROFILE ".config\opencode\plugins" }
 
 $PeonConfigDir = if ($env:XDG_CONFIG_HOME) { Join-Path $env:XDG_CONFIG_HOME "opencode\peon-ping" }
-                 elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "opencode\peon-ping" }
                  else { Join-Path $env:USERPROFILE ".config\opencode\peon-ping" }
 
 $PacksDir = Join-Path $env:USERPROFILE ".openpeon\packs"

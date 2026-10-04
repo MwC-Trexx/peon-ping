@@ -13,6 +13,7 @@ setup() {
   OPENCODE_SH="$REPO_ROOT/adapters/opencode.sh"
 
   unset XDG_CONFIG_HOME
+  unset CLAUDE_PEON_DIR CLAUDE_CONFIG_DIR
   PLUGINS_DIR="$TEST_HOME/.config/opencode/plugins"
 
   # Mock peon.sh — satisfies preflight check
@@ -144,6 +145,23 @@ teardown() {
   export XDG_CONFIG_HOME="$TEST_HOME/custom-config"
   bash "$OPENCODE_SH"
   [ -f "$TEST_HOME/custom-config/opencode/plugins/peon-ping.ts" ]
+}
+
+@test "custom hook directory allows installation outside ~/.claude" {
+  export CLAUDE_PEON_DIR="$TEST_HOME/custom hook"
+  mkdir -p "$CLAUDE_PEON_DIR"
+  mv "$TEST_HOME/.claude/hooks/peon-ping/peon.sh" "$CLAUDE_PEON_DIR/peon.sh"
+  run bash "$OPENCODE_SH"
+  [ "$status" -eq 0 ]
+  [ -f "$PLUGINS_DIR/peon-ping.ts" ]
+}
+
+@test "OpenPeon hook installation satisfies adapter preflight" {
+  mkdir -p "$TEST_HOME/.openpeon/hooks/peon-ping"
+  mv "$TEST_HOME/.claude/hooks/peon-ping/peon.sh" "$TEST_HOME/.openpeon/hooks/peon-ping/peon.sh"
+  run bash "$OPENCODE_SH"
+  [ "$status" -eq 0 ]
+  [ -f "$PLUGINS_DIR/peon-ping.ts" ]
 }
 
 # ============================================================

@@ -912,7 +912,7 @@ Add additional events from the table above as desired. The adapter translates Co
 
 ### OpenCode setup
 
-A native TypeScript plugin for [OpenCode](https://opencode.ai/) with full [CESP v1.0](https://github.com/PeonPing/openpeon) conformance.
+A thin TypeScript adapter for [OpenCode v2](https://opencode.ai/v2/docs/build/plugins) that routes events through the installed peon-ping hook. Install peon-ping first using the platform installer above.
 
 **Quick install:**
 
@@ -920,12 +920,14 @@ A native TypeScript plugin for [OpenCode](https://opencode.ai/) with full [CESP 
 curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/opencode.sh | bash
 ```
 
-The installer copies `peon-ping.ts` to `~/.config/opencode/plugins/` and creates a config at `~/.config/opencode/peon-ping/config.json`. Packs are stored at the shared CESP path (`~/.openpeon/packs/`).
+The installer copies `peon-ping.ts` to `~/.config/opencode/plugins/`, respecting `XDG_CONFIG_HOME`. On native Windows, run `powershell -NoProfile -File adapters/opencode.ps1` from a clone after installing peon-ping. The Windows adapter uses the same OpenCode discovery directory and invokes the installed `peon.ps1` directly, without Git Bash. Config, packs and playback are handled by the main peon-ping installation; use `peon config` and `peon packs` to manage them. `CLAUDE_PEON_DIR` selects a custom hook installation.
+
+This adapter requires OpenCode v2. See [the event mapping and compatibility notes](docs/opencode-v2-events.md) for its API contract and validation requirements.
 
 **Features:**
 
 - **Sound playback** via `afplay` (macOS), `pw-play`/`paplay`/`ffplay` (Linux) — same priority chain as the shell hook
-- **CESP event mapping** — `session.created` / `session.idle` / `session.error` / `permission.asked` / rapid prompt detection all map to standard CESP categories
+- **CESP event mapping**: execution start, success and failure, permission requests and input forms map to standard CESP categories
 - **Desktop notifications** — large overlay banners by default (JXA Cocoa, visible on all screens), or standard notifications via [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) / `osascript`. Fires only when the terminal is not focused.
 - **Terminal focus detection** — checks if your terminal app (Terminal, iTerm2, Warp, Alacritty, kitty, WezTerm, ghostty, Hyper) is frontmost via AppleScript before sending notifications
 - **Tab titles** — updates the terminal tab to show task status (`● project: working...` / `✓ project: done` / `✗ project: error`)

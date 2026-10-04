@@ -24,15 +24,20 @@ import { spawn } from "node:child_process"
 
 const MAX_PENDING_QUESTION_IDS = 100
 
-const PEON_SH_PATHS = [
-  path.join(os.homedir(), ".claude", "hooks", "peon-ping", "peon.sh"),
-  path.join(os.homedir(), ".openclaw", "hooks", "peon-ping", "peon.sh"),
-]
-
-function findPeonSh(): string | null {
-  for (const p of PEON_SH_PATHS) {
+function findPeonScript(windows: boolean): string | null {
+  const filename = windows ? "peon.ps1" : "peon.sh"
+  const directories = [
+    process.env.CLAUDE_PEON_DIR,
+    path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "hooks", "peon-ping"),
+    path.join(os.homedir(), ".openpeon", "hooks", "peon-ping"),
+    path.join(os.homedir(), ".openpeon"),
+    path.join(os.homedir(), ".openclaw", "hooks", "peon-ping"),
+  ]
+  for (const directory of directories) {
+    if (!directory) continue
+    const candidate = path.join(directory, filename)
     try {
-      if (fs.existsSync(p)) return p
+      if (fs.existsSync(candidate)) return candidate
     } catch {}
   }
   return null
@@ -51,6 +56,7 @@ type V2Event = {
   id?: string
   type: string
   data?: Record<string, any>
+  location?: { directory?: string }
 }
 
 export default {
@@ -58,12 +64,17 @@ export default {
 
   setup: async (ctx: any) => {
     const projectName = path.basename(ctx?.location?.directory || process.cwd()) || "opencode"
-    const peonSh = findPeonSh()
+    const windows = os.platform() === "win32"
+    const peonScript = findPeonScript(windows)
 
-    if (!peonSh) {
-      console.warn("[peon-ping] peon.sh not found. Install peon-ping first:")
-      console.warn("  brew install PeonPing/tap/peon-ping")
-      console.warn("  # or: curl -fsSL peonping.com/install | bash")
+    if (!peonScript) {
+      console.warn(`[peon-ping] ${windows ? "peon.ps1" : "peon.sh"} not found. Install peon-ping first:`)
+      if (windows) {
+        console.warn("  https://github.com/PeonPing/peon-ping#option-3-installer-for-windows")
+      } else {
+        console.warn("  brew install PeonPing/tap/peon-ping")
+        console.warn("  # or: curl -fsSL peonping.com/install | bash")
+      }
       return
     }
 
@@ -71,7 +82,7 @@ export default {
     const sessionId = `oc-${Date.now()}`
     const subagentSessionIds = new Set<string>()
     const busySessions = new Set<string>()
-    let lastSessionStart = 0
+    const sessionStarts = new Map<string, number>()
     const pendingQuestionIds = new Set<string>()
 
     function firePeon(event: string, notificationType = ""): void {
@@ -85,11 +96,17 @@ export default {
       })
 
       try {
-        const proc = spawn("bash", [peonSh], {
+        const proc = spawn(windows ? "powershell.exe" : "bash", windows
+          ? ["-NoProfile", "-NonInteractive", "-File", peonScript!]
+          : [peonScript!], {
           stdio: ["pipe", "ignore", "ignore"],
         })
-        proc.stdin.write(payload)
-        proc.stdin.end()
+        // Launch failures and early child exits arrive asynchronously, outside
+        // this try/catch. Notifications must never take down the plugin host.
+        proc.on("error", () => {})
+        proc.stdin?.on("error", () => {})
+        proc.stdin?.write(payload)
+        proc.stdin?.end()
         proc.unref()
       } catch {}
     }
@@ -106,17 +123,27 @@ export default {
      * only v2 events that map onto a peon-ping category.
      */
     function handle(event: V2Event): void {
+      if (event.location?.directory) {
+        const eventDirectory = path.resolve(event.location.directory)
+        const pluginDirectory = path.resolve(cwd)
+        if (windows
+          ? eventDirectory.toLowerCase() !== pluginDirectory.toLowerCase()
+          : eventDirectory !== pluginDirectory) return
+      }
       const data = event.data ?? {}
 
       switch (event.type) {
-        case "session.created":
-        case "session.updated": {
-          if (data.parentID) subagentSessionIds.add(data.id)
+        case "session.created": {
+          if (data.parentID && typeof data.sessionID === "string") subagentSessionIds.add(data.sessionID)
           break
         }
 
         case "session.deleted": {
-          if (data.id) subagentSessionIds.delete(data.id)
+          if (typeof data.sessionID === "string") {
+            subagentSessionIds.delete(data.sessionID)
+            busySessions.delete(data.sessionID)
+            sessionStarts.delete(data.sessionID)
+          }
           break
         }
 
@@ -126,14 +153,14 @@ export default {
         // follows it, matching the pre-v2 behaviour.
         case "session.execution.started": {
           const sid = data.sessionID
-          if (isSubagent(sid)) break
-          if (typeof sid === "string" && !busySessions.has(sid) && lastSessionStart === 0) {
-            lastSessionStart = Date.now()
+          if (typeof sid !== "string" || isSubagent(sid) || busySessions.has(sid)) break
+          busySessions.add(sid)
+          const lastSessionStart = sessionStarts.get(sid)
+          if (lastSessionStart === undefined) {
+            sessionStarts.set(sid, Date.now())
             setTabTitle(`${projectName}: ready`)
             firePeon("SessionStart")
-          }
-          if (sid) busySessions.add(sid)
-          if (Date.now() - lastSessionStart > 3000) {
+          } else if (Date.now() - lastSessionStart > 3000) {
             setTabTitle(`${projectName}: working`)
             firePeon("UserPromptSubmit")
           }
@@ -158,7 +185,13 @@ export default {
           break
         }
 
+        case "session.execution.interrupted": {
+          if (typeof data.sessionID === "string") busySessions.delete(data.sessionID)
+          break
+        }
+
         case "permission.asked": {
+          if (isSubagent(data.sessionID)) break
           setTabTitle(`\u25cf ${projectName}: needs approval`)
           firePeon("PermissionRequest")
           break
@@ -167,9 +200,10 @@ export default {
         // v2 renamed the "agent needs input" elicitation surface from
         // question.* to form.*.
         case "form.created": {
-          const sid = data.sessionID
+          const form = data.form
+          const sid = form?.sessionID
           if (isSubagent(sid)) break
-          const requestId = data.id ?? data.formID
+          const requestId = form?.id
           if (typeof requestId !== "string" || pendingQuestionIds.has(requestId)) break
           if (pendingQuestionIds.size >= MAX_PENDING_QUESTION_IDS) {
             pendingQuestionIds.delete(pendingQuestionIds.values().next().value!)
@@ -182,7 +216,7 @@ export default {
 
         case "form.replied":
         case "form.cancelled": {
-          const requestId = data.formID ?? data.id
+          const requestId = data.id
           if (typeof requestId === "string") pendingQuestionIds.delete(requestId)
           break
         }

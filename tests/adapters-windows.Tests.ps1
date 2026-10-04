@@ -690,8 +690,8 @@ Describe "Category C: OpenCode Installer" {
         $script:opencodeContent | Should -Match 'peonping\.github\.io/registry'
     }
 
-    It "uses LOCALAPPDATA for Windows-native path" {
-        $script:opencodeContent | Should -Match 'LOCALAPPDATA'
+    It "uses XDG-style path (~/.config/opencode/) for OpenCode compatibility" {
+        $script:opencodeContent | Should -Match 'USERPROFILE.*\.config\\opencode'
     }
 }
 
@@ -702,15 +702,6 @@ Describe "Category C: Kilo Installer" {
 
     It "has Uninstall flag" {
         $script:kiloContent | Should -Match '\[switch\]\$Uninstall'
-    }
-
-    It "downloads and patches OpenCode plugin for Kilo" {
-        $script:kiloContent | Should -Match 'peon-ping\.ts'
-        $script:kiloContent | Should -Match '@kilocode/plugin'
-    }
-
-    It "patches config path from opencode to kilo" {
-        $script:kiloContent | Should -Match '".config", "kilo", "peon-ping"'
     }
 
     It "creates default config.json" {

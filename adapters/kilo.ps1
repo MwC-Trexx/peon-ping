@@ -2,8 +2,7 @@
 # Installs the peon-ping CESP v1.0 TypeScript plugin for Kilo CLI
 #
 # Kilo CLI is a fork of OpenCode and uses the same TypeScript plugin system.
-# This installer downloads the OpenCode plugin and patches the import path
-# and config directories for Kilo.
+# This installer downloads the dedicated Kilo v1 server plugin.
 #
 # Install:
 #   powershell -NoProfile -File adapters/kilo.ps1
@@ -18,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # --- Config ---
-$PluginUrl = "https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/opencode/peon-ping.ts"
+$PluginUrl = "https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo/peon-ping.ts"
 $RegistryUrl = "https://peonping.github.io/registry/index.json"
 $DefaultPack = "peon"
 
@@ -46,25 +45,11 @@ if ($Uninstall) {
 # --- Install ---
 Write-Host "> Installing peon-ping for Kilo CLI..."
 
-# Install plugin — download OpenCode plugin and patch for Kilo
+# Install the dedicated Kilo v1 server plugin
 New-Item -ItemType Directory -Path $PluginsDir -Force | Out-Null
 
-Write-Host "> Downloading OpenCode plugin and patching for Kilo CLI..."
+Write-Host "> Downloading Kilo CLI plugin..."
 $pluginContent = (Invoke-WebRequest -Uri $PluginUrl -UseBasicParsing).Content
-
-# Apply string replacements (matching kilo.sh sed commands)
-$pluginContent = $pluginContent -replace '"@opencode-ai/plugin"', '"@kilocode/plugin"'
-$pluginContent = $pluginContent -replace '".config", "opencode", "peon-ping"', '".config", "kilo", "peon-ping"'
-$pluginContent = $pluginContent -replace '`oc-\$\{Date\.now\(\)\}`', '`kilo-${Date.now()}`'
-$pluginContent = $pluginContent -replace '\) \|\| "opencode"', ') || "kilo"'
-$pluginContent = $pluginContent -replace 'peon-ping for OpenCode', 'peon-ping for Kilo CLI'
-$pluginContent = $pluginContent -replace 'A CESP.*?player for OpenCode\.', 'A CESP (Coding Event Sound Pack Specification) player for Kilo CLI.'
-$pluginContent = $pluginContent -replace 'Maps OpenCode events', 'Maps Kilo events'
-$pluginContent = $pluginContent -replace '~/.config/opencode/plugins/peon-ping\.ts', '~/.config/kilo/plugins/peon-ping.ts'
-$pluginContent = $pluginContent -replace 'Restart OpenCode', 'Restart Kilo CLI'
-$pluginContent = $pluginContent -replace 'OpenCode Event', 'Kilo Event'
-$pluginContent = $pluginContent -replace 'OpenCode -> CESP', 'Kilo CLI -> CESP'
-$pluginContent = $pluginContent -replace 'Return OpenCode event hooks', 'Return Kilo event hooks'
 
 $pluginPath = Join-Path $PluginsDir "peon-ping.ts"
 # UTF-8 without a BOM: Set-Content -Encoding UTF8 writes one on Windows PowerShell

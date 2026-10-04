@@ -5,18 +5,33 @@ on:
     branches: [main]
     paths:
       - 'adapters/opencode/**'
-      - 'tests/opencode-peon-ping-internals.test.ts'
+      - 'adapters/opencode.sh'
+      - 'adapters/opencode.ps1'
+      - 'adapters/kilo/**'
+      - 'adapters/kilo.sh'
+      - 'adapters/kilo.ps1'
+      - 'tests/opencode-*.test.ts'
+      - 'tests/kilo-compatibility.test.ts'
       - '.github/workflows/test-opencode-adapter.yml'
   push:
     branches: [main]
     paths:
       - 'adapters/opencode/**'
-      - 'tests/opencode-peon-ping-internals.test.ts'
+      - 'adapters/opencode.sh'
+      - 'adapters/opencode.ps1'
+      - 'adapters/kilo/**'
+      - 'adapters/kilo.sh'
+      - 'adapters/kilo.ps1'
+      - 'tests/opencode-*.test.ts'
+      - 'tests/kilo-compatibility.test.ts'
       - '.github/workflows/test-opencode-adapter.yml'
 
 jobs:
   vitest:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: adapters/opencode

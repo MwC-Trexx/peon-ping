@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const stdin = {
   write: vi.fn(),
   end: vi.fn(),
+  on: vi.fn(),
 }
 const spawnedProcess = {
   stdin,
   unref: vi.fn(),
+  on: vi.fn(),
 }
 
 vi.mock("node:fs", () => ({
@@ -17,7 +19,16 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(() => spawnedProcess),
 }))
 
+vi.mock("node:os", () => ({
+  homedir: () => "/tmp/opencode-test-home",
+  platform: vi.fn(() => "darwin"),
+}))
+
+import * as fs from "node:fs"
+import * as os from "node:os"
 import { spawn } from "node:child_process"
+import { EventEmitter } from "node:events"
+import * as path from "node:path"
 import plugin from "../adapters/opencode/peon-ping.js"
 
 /**
@@ -26,17 +37,27 @@ import plugin from "../adapters/opencode/peon-ping.js"
  */
 async function createHost(events: Array<Record<string, any>> = []) {
   const queue = [...events]
-  let push: ((event: Record<string, any>) => void) | undefined
+  let wake: (() => void) | undefined
+  let signal: AbortSignal
 
   const ctx: any = {
     location: { directory: "/tmp/example-project" },
     event: {
-      subscribe: async function* (_opts: any) {
-        for (const event of queue) yield event
-        // Park forever so the loop stays alive between test steps.
-        await new Promise<void>((resolve) => {
-          push = resolve as any
-        })
+      subscribe: async function* (opts: { signal: AbortSignal }) {
+        signal = opts.signal
+        while (!signal.aborted) {
+          if (queue.length > 0) {
+            yield queue.shift()!
+            continue
+          }
+          let onAbort: () => void
+          await new Promise<void>((resolve) => {
+            onAbort = () => resolve()
+            wake = resolve
+            signal.addEventListener("abort", onAbort, { once: true })
+          })
+          signal.removeEventListener("abort", onAbort!)
+        }
       },
     },
   }
@@ -48,10 +69,12 @@ async function createHost(events: Array<Record<string, any>> = []) {
   return {
     async emit(event: Record<string, any>) {
       queue.push(event)
+      wake?.()
       await new Promise((resolve) => setTimeout(resolve, 0))
       await new Promise((resolve) => setTimeout(resolve, 0))
     },
     cleanup,
+    aborted: () => signal?.aborted,
   }
 }
 
@@ -66,11 +89,16 @@ function hookEvents(): string[] {
 describe("peon-ping OpenCode v2 plugin definition", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(os.platform).mockReturnValue("darwin")
+    vi.stubEnv("CLAUDE_PEON_DIR", "")
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "")
     vi.spyOn(process.stdout, "write").mockImplementation(() => true)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   it("exports a v2 definition object with an id and a setup function", () => {
@@ -83,12 +111,17 @@ describe("peon-ping OpenCode v2 plugin definition", () => {
 describe("peon-ping event mapping", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(os.platform).mockReturnValue("darwin")
+    vi.stubEnv("CLAUDE_PEON_DIR", "")
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "")
     vi.spyOn(process.stdout, "write").mockImplementation(() => true)
   })
 
   afterEach(() => {
     vi.clearAllTimers()
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   it("maps session execution lifecycle onto peon hook events", async () => {
@@ -121,9 +154,12 @@ describe("peon-ping event mapping", () => {
         id: "evt_1",
         type: "form.created",
         data: {
-          id: "form-request-v1",
-          sessionID: "primary-session",
-          questions: [{ question: sensitiveText, options: [{ label: "Secret option" }] }],
+          form: {
+            id: "form-request-v1",
+            sessionID: "primary-session",
+            title: sensitiveText,
+            fields: [{ type: "string", key: "answer", label: "Secret option" }],
+          },
         },
       },
     ])
@@ -148,8 +184,8 @@ describe("peon-ping event mapping", () => {
 
   it("suppresses duplicate form notifications with the same id", async () => {
     const host = await createHost([
-      { id: "evt_1", type: "form.created", data: { id: "same-form", sessionID: "primary-session" } },
-      { id: "evt_2", type: "form.created", data: { id: "same-form", sessionID: "primary-session" } },
+      { id: "evt_1", type: "form.created", data: { form: { id: "same-form", sessionID: "primary-session", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } },
+      { id: "evt_2", type: "form.created", data: { form: { id: "same-form", sessionID: "primary-session", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } },
     ])
 
     await new Promise((resolve) => setTimeout(resolve, 20))
@@ -161,10 +197,10 @@ describe("peon-ping event mapping", () => {
   it("bounds pending form ids and evicts the oldest request", async () => {
     const events = []
     for (let id = 0; id <= 100; id += 1) {
-      events.push({ id: `evt_${id}`, type: "form.created", data: { id: `form-${id}`, sessionID: "ses_a" } })
+      events.push({ id: `evt_${id}`, type: "form.created", data: { form: { id: `form-${id}`, sessionID: "ses_a", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } })
     }
     // Re-use the oldest id, which must have been evicted to make room.
-    events.push({ id: "evt_x", type: "form.created", data: { id: "form-0", sessionID: "ses_a" } })
+    events.push({ id: "evt_x", type: "form.created", data: { form: { id: "form-0", sessionID: "ses_a", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } })
 
     const host = await createHost(events)
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -175,8 +211,8 @@ describe("peon-ping event mapping", () => {
 
   it("suppresses notifications from tracked subagent sessions", async () => {
     const host = await createHost([
-      { id: "evt_1", type: "session.created", data: { id: "subagent-session", parentID: "ses_a" } },
-      { id: "evt_2", type: "form.created", data: { id: "f1", sessionID: "subagent-session" } },
+      { id: "evt_1", type: "session.created", data: { sessionID: "subagent-session", parentID: "ses_a" } },
+      { id: "evt_2", type: "form.created", data: { form: { id: "f1", sessionID: "subagent-session", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } },
     ])
 
     await new Promise((resolve) => setTimeout(resolve, 20))
@@ -187,9 +223,9 @@ describe("peon-ping event mapping", () => {
 
   it.each(["form.replied", "form.cancelled"])("cleans deduplication state on %s", async (settledType) => {
     const host = await createHost([
-      { id: "evt_1", type: "form.created", data: { id: "reusable-form", sessionID: "ses_a" } },
-      { id: "evt_2", type: settledType, data: { formID: "reusable-form", sessionID: "ses_a" } },
-      { id: "evt_3", type: "form.created", data: { id: "reusable-form", sessionID: "ses_a" } },
+      { id: "evt_1", type: "form.created", data: { form: { id: "reusable-form", sessionID: "ses_a", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } },
+      { id: "evt_2", type: settledType, data: { id: "reusable-form", sessionID: "ses_a" } },
+      { id: "evt_3", type: "form.created", data: { form: { id: "reusable-form", sessionID: "ses_a", title: "Input", fields: [{ type: "string", key: "answer", label: "Answer" }] } } },
     ])
 
     await new Promise((resolve) => setTimeout(resolve, 20))
@@ -211,5 +247,118 @@ describe("peon-ping event mapping", () => {
       cwd: "/tmp/example-project",
       source: "opencode",
     })
+  })
+
+  it("handles events arriving after setup and aborts the stream on cleanup", async () => {
+    const host = await createHost()
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    await host.emit({ type: "session.execution.succeeded", data: { sessionID: "ses_a" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual(["SessionStart", "Stop"])
+    expect(host.aborted()).toBe(true)
+  })
+
+  it("suppresses duplicate execution starts after the debounce window", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(10000)
+    const host = await createHost()
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    vi.mocked(Date.now).mockReturnValue(15000)
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual(["SessionStart"])
+  })
+
+  it("starts each primary session independently", async () => {
+    const host = await createHost()
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_b" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual(["SessionStart", "SessionStart"])
+  })
+
+  it("suppresses child lifecycle and permission events using v2 sessionID", async () => {
+    const host = await createHost()
+    await host.emit({ type: "session.created", data: { sessionID: "ses_child", parentID: "ses_a" } })
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_child" } })
+    await host.emit({ type: "permission.asked", data: { sessionID: "ses_child", id: "p1" } })
+    await host.emit({ type: "session.execution.succeeded", data: { sessionID: "ses_child" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual([])
+  })
+
+  it("routes Unix payloads to the explicit hook directory and closes stdin", async () => {
+    vi.stubEnv("CLAUDE_PEON_DIR", "/tmp/hook override")
+    const host = await createHost()
+    await host.emit({ type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } })
+    host.cleanup?.()
+    expect(spawn).toHaveBeenCalledWith("bash", [path.normalize("/tmp/hook override/peon.sh")], {
+      stdio: ["pipe", "ignore", "ignore"],
+    })
+    expect(stdin.end).toHaveBeenCalledOnce()
+    expect(payloads()[0].hook_event_name).toBe("PermissionRequest")
+  })
+
+  it("uses PowerShell directly on Windows without requiring peon.sh", async () => {
+    vi.mocked(os.platform).mockReturnValue("win32")
+    vi.mocked(fs.existsSync).mockImplementation((candidate) => String(candidate).endsWith("peon.ps1"))
+    const host = await createHost()
+    await host.emit({ type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } })
+    host.cleanup?.()
+    expect(spawn).toHaveBeenCalledWith("powershell.exe", [
+      "-NoProfile", "-NonInteractive", "-File", path.normalize("/tmp/opencode-test-home/.claude/hooks/peon-ping/peon.ps1"),
+    ], { stdio: ["pipe", "ignore", "ignore"] })
+    expect(payloads()[0].hook_event_name).toBe("PermissionRequest")
+    expect(stdin.end).toHaveBeenCalledOnce()
+  })
+
+  it("discovers the Windows OpenPeon installation", async () => {
+    vi.mocked(os.platform).mockReturnValue("win32")
+    vi.mocked(fs.existsSync).mockImplementation((candidate) => String(candidate) === path.normalize("/tmp/opencode-test-home/.openpeon/hooks/peon-ping/peon.ps1"))
+    const host = await createHost()
+    await host.emit({ type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } })
+    host.cleanup?.()
+    expect(spawn).toHaveBeenCalledWith("powershell.exe", [
+      "-NoProfile", "-NonInteractive", "-File", path.normalize("/tmp/opencode-test-home/.openpeon/hooks/peon-ping/peon.ps1"),
+    ], { stdio: ["pipe", "ignore", "ignore"] })
+  })
+
+  it("contains asynchronous launch and stdin failures", async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() }),
+      unref: vi.fn(),
+    })
+    vi.mocked(spawn).mockReturnValueOnce(child as any)
+    const host = await createHost()
+    await host.emit({ type: "permission.asked", data: { sessionID: "ses_a", id: "p1" } })
+    expect(() => child.emit("error", new Error("ENOENT"))).not.toThrow()
+    expect(() => child.stdin.emit("error", new Error("EPIPE"))).not.toThrow()
+    host.cleanup?.()
+  })
+
+  it("clears busy state on interruption without announcing successful completion", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(10000)
+    const host = await createHost()
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    await host.emit({ type: "session.execution.interrupted", data: { sessionID: "ses_a", reason: "user" } })
+    vi.mocked(Date.now).mockReturnValue(15000)
+    await host.emit({ type: "session.execution.started", data: { sessionID: "ses_a" } })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual(["SessionStart", "UserPromptSubmit"])
+  })
+
+  it("ignores another location on the global server stream", async () => {
+    const host = await createHost()
+    await host.emit({
+      type: "session.execution.started",
+      location: { directory: "/tmp/another-project" },
+      data: { sessionID: "ses_elsewhere" },
+    })
+    await host.emit({
+      type: "permission.asked",
+      location: { directory: "/tmp/example-project" },
+      data: { sessionID: "ses_a", id: "p1" },
+    })
+    host.cleanup?.()
+    expect(hookEvents()).toEqual(["PermissionRequest"])
   })
 })

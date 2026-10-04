@@ -3,8 +3,7 @@
 # Installs the peon-ping CESP v1.0 TypeScript plugin for Kilo CLI
 #
 # Kilo CLI is a fork of OpenCode and uses the same TypeScript plugin system.
-# This installer downloads the OpenCode plugin and patches the import path
-# and config directories for Kilo.
+# This installer downloads the dedicated Kilo v1 server plugin.
 #
 # Install:
 #   bash adapters/kilo.sh
@@ -18,7 +17,7 @@
 set -euo pipefail
 
 # --- Config ---
-PLUGIN_URL="https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/opencode/peon-ping.ts"
+PLUGIN_URL="https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo/peon-ping.ts"
 REGISTRY_URL="https://peonping.github.io/registry/index.json"
 DEFAULT_PACK="peon"
 
@@ -90,22 +89,8 @@ esac
 # --- Install plugin ---
 mkdir -p "$KILO_PLUGINS_DIR"
 
-info "Downloading OpenCode plugin and patching for Kilo CLI..."
-curl -fsSL "$PLUGIN_URL" \
-  | sed \
-    -e 's|"@opencode-ai/plugin"|"@kilocode/plugin"|g' \
-    -e 's|".config", "opencode", "peon-ping"|".config", "kilo", "peon-ping"|g' \
-    -e 's|`oc-\${Date.now()}`|`kilo-${Date.now()}`|g' \
-    -e 's|) || "opencode"|) || "kilo"|g' \
-    -e 's|peon-ping for OpenCode|peon-ping for Kilo CLI|g' \
-    -e 's|A CESP.*player for OpenCode\.|A CESP (Coding Event Sound Pack Specification) player for Kilo CLI.|g' \
-    -e 's|Maps OpenCode events|Maps Kilo events|g' \
-    -e 's|~/.config/opencode/plugins/peon-ping.ts|~/.config/kilo/plugins/peon-ping.ts|g' \
-    -e 's|Restart OpenCode|Restart Kilo CLI|g' \
-    -e 's|OpenCode Event|Kilo Event|g' \
-    -e 's|OpenCode -> CESP|Kilo CLI -> CESP|g' \
-    -e 's|Return OpenCode event hooks|Return Kilo event hooks|g' \
-  > "$KILO_PLUGINS_DIR/peon-ping.ts"
+info "Downloading Kilo CLI plugin..."
+curl -fsSL "$PLUGIN_URL" -o "$KILO_PLUGINS_DIR/peon-ping.ts"
 info "Plugin installed to $KILO_PLUGINS_DIR/peon-ping.ts"
 
 # --- Create default config ---
