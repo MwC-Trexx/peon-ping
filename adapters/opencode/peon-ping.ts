@@ -33,18 +33,26 @@ import type { Plugin } from "@opencode-ai/plugin"
 
 const MAX_PENDING_QUESTION_IDS = 100
 
-const PEON_SH_PATHS = [
-  path.join(os.homedir(), ".claude", "hooks", "peon-ping", "peon.sh"),
-  path.join(os.homedir(), ".openclaw", "hooks", "peon-ping", "peon.sh"),
+const PEON_HOOK_PATHS = [
+  path.join(os.homedir(), ".claude", "hooks", "peon-ping"),
+  path.join(os.homedir(), ".openclaw", "hooks", "peon-ping"),
 ]
 
-function findPeonSh(): string | null {
-  for (const p of PEON_SH_PATHS) {
-    try {
-      if (fs.existsSync(p)) return p
-    } catch {}
+const IS_WINDOWS = process.platform === "win32"
+
+function findPeonScript(): { sh?: string; ps1?: string } {
+  const found: { sh?: string; ps1?: string } = {}
+  for (const dir of PEON_HOOK_PATHS) {
+    if (!found.sh) {
+      const sh = path.join(dir, "peon.sh")
+      if (fs.existsSync(sh)) found.sh = sh
+    }
+    if (!found.ps1) {
+      const ps1 = path.join(dir, "peon.ps1")
+      if (fs.existsSync(ps1)) found.ps1 = ps1
+    }
   }
-  return null
+  return found
 }
 
 function setTabTitle(title: string): void {
@@ -54,9 +62,16 @@ function setTabTitle(title: string): void {
 
 export const PeonPingPlugin: Plugin = async ({ directory }) => {
   const projectName = path.basename(directory || process.cwd()) || "opencode"
-  const peonSh = findPeonSh()
+  const scripts = findPeonScript()
 
-  if (!peonSh) {
+  // Windows: prefer peon.ps1 directly (no bash required).
+  // Unix: prefer peon.sh (Unix hook script).
+  if (IS_WINDOWS && !scripts.ps1) {
+    console.warn("[peon-ping] peon.ps1 not found. Install peon-ping first:")
+    console.warn("  iwr -useb https://peonping.com/install.ps1 | iex")
+    return {}
+  }
+  if (!IS_WINDOWS && !scripts.sh) {
     console.warn("[peon-ping] peon.sh not found. Install peon-ping first:")
     console.warn("  brew install PeonPing/tap/peon-ping")
     console.warn("  # or: curl -fsSL peonping.com/install | bash")
@@ -81,11 +96,21 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
     })
 
     try {
-      const proc = spawn("bash", [peonSh], {
-        stdio: ["pipe", "ignore", "ignore"],
-      })
-      proc.stdin.write(payload)
-      proc.stdin.end()
+      let proc: ReturnType<typeof spawn>
+      if (IS_WINDOWS) {
+        // Direct PowerShell invocation - no Git Bash dependency.
+        proc = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-File", scripts.ps1!],
+          { stdio: ["pipe", "ignore", "ignore"] }
+        )
+      } else {
+        proc = spawn("bash", [scripts.sh!], {
+          stdio: ["pipe", "ignore", "ignore"],
+        })
+      }
+      proc.stdin!.write(payload)
+      proc.stdin!.end()
       proc.unref()
     } catch {}
   }
