@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # --- Config ---
-$PluginUrl = "https://raw.githubusercontent.com/rafaelsnv/peon-ping/opencode-windows-adapter/adapters/opencode/peon-ping.ts"
+$PluginUrl = "https://cdn.jsdelivr.net/gh/rafaelsnv/peon-ping@opencode-windows-adapter/adapters/opencode/peon-ping.ts"
 $RegistryUrl = "https://peonping.github.io/registry/index.json"
 $DefaultPack = "peon"
 
@@ -49,6 +49,7 @@ $pluginPath = Join-Path $PluginsDir "peon-ping.ts"
 Remove-Item $pluginPath -Force -ErrorAction SilentlyContinue
 
 Write-Host "> Downloading peon-ping.ts plugin..."
+# Use jsdelivr to avoid GitHub raw URL caching (~5min lag on updates)
 Invoke-WebRequest -Uri $PluginUrl -OutFile $pluginPath -UseBasicParsing
 Write-Host "> Plugin installed to $pluginPath"
 
