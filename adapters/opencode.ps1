@@ -49,7 +49,6 @@ $pluginPath = Join-Path $PluginsDir "peon-ping.ts"
 Remove-Item $pluginPath -Force -ErrorAction SilentlyContinue
 
 Write-Host "> Downloading peon-ping.ts plugin..."
-# Use jsdelivr to avoid GitHub raw URL caching (~5min lag on updates)
 Invoke-WebRequest -Uri $PluginUrl -OutFile $pluginPath -UseBasicParsing
 Write-Host "> Plugin installed to $pluginPath"
 

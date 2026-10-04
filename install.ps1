@@ -418,20 +418,6 @@ if (Test-Path $ttsNativeSource) {
     }
 }
 
-# --- Install peon.sh (Git Bash wrapper for OpenCode plugin) ---
-$peonShSource = Join-Path $ScriptDir "adapters\opencode\peon.sh"
-$peonShTarget = Join-Path $InstallDir "peon.sh"
-
-if (Test-Path $peonShSource) {
-    Copy-Item -Path $peonShSource -Destination $peonShTarget -Force
-} else {
-    try {
-        Invoke-WebRequest -Uri "$RepoBase/adapters/opencode/peon.sh" -OutFile $peonShTarget -UseBasicParsing -ErrorAction Stop
-    } catch {
-        Write-Host "  Warning: Could not download peon.sh (OpenCode Git Bash wrapper)" -ForegroundColor Yellow
-    }
-}
-
 # --- Install the main hook script (PowerShell) ---
 $hookScript = @'
 # peon-ping hook for Claude Code (Windows native)
