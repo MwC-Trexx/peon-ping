@@ -856,7 +856,7 @@ bash ~/.claude/hooks/peon-ping/adapters/opencode/setup-icon.sh
 curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo.sh | bash
 ```
 
-安装程序遵循 `XDG_CONFIG_HOME`，将专用 Kilo 插件复制到 `~/.config/kilo/plugins/`。播放使用主 peon-ping 安装及其配置。请用 `peon config` 和 `peon packs` 管理设置和语音包。
+安装程序遵循 `XDG_CONFIG_HOME`，将专用 Kilo 插件复制到 `~/.config/kilo/plugins/`。播放使用主 peon-ping 安装及其配置。请用 `peon config` 和 `peon packs` 管理设置和语音包。原生 Kilo 会话 ID 会区分独立会话，并在后续事件和插件重新加载时保留相同的语音包身份。
 
 **功能：** 与 [OpenCode 适配器](#opencode-设置)相同 — 声音播放、CESP 事件映射、桌面通知、终端焦点检测、标签页标题、语音包切换、不重复逻辑和刷屏检测。
 

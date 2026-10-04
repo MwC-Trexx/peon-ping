@@ -829,7 +829,7 @@ bash ~/.claude/hooks/peon-ping/adapters/opencode/setup-icon.sh
 curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo.sh | bash
 ```
 
-インストーラーは `XDG_CONFIG_HOME` に従って専用の Kilo プラグインを `~/.config/kilo/plugins/` にコピーします。再生にはメインの peon-ping インストールとその設定を使用します。設定とパックは `peon config`、`peon packs` で管理してください。
+インストーラーは `XDG_CONFIG_HOME` に従って専用の Kilo プラグインを `~/.config/kilo/plugins/` にコピーします。再生にはメインの peon-ping インストールとその設定を使用します。設定とパックは `peon config`、`peon packs` で管理してください。Kilo のネイティブセッション ID を使用するため、独立したセッションは区別され、後続イベントやプラグインの再読み込みでもパックの識別情報が維持されます。
 
 **機能:** [OpenCode アダプター](#opencode-セットアップ)と同じ — サウンド再生、CESP イベントマッピング、デスクトップ通知、ターミナルフォーカス検出、タブタイトル、パック切り替え、リピート防止ロジック、スパム検出。
 

@@ -975,7 +975,7 @@ A dedicated v1 TypeScript adapter for [Kilo CLI](https://github.com/kilocode/cli
 curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo.sh | bash
 ```
 
-The installer downloads the dedicated Kilo plugin to `~/.config/kilo/plugins/`, respecting `XDG_CONFIG_HOME`. Playback uses the main peon-ping installation and its configuration. Use `peon config` and `peon packs` to manage settings and packs.
+The installer downloads the dedicated Kilo plugin to `~/.config/kilo/plugins/`, respecting `XDG_CONFIG_HOME`. Playback uses the main peon-ping installation and its configuration. Use `peon config` and `peon packs` to manage settings and packs. Native Kilo session IDs keep independent sessions separate and retain the same pack identity across later events and plugin reloads.
 
 **Features:** Same as the [OpenCode adapter](#opencode-setup) — sound playback, CESP event mapping, desktop notifications, terminal focus detection, tab titles, pack switching, no-repeat logic, and spam detection.
 
