@@ -967,7 +967,7 @@ The script auto-finds the peon icon (Homebrew libexec, OpenCode config, or Claud
 
 ### Kilo CLI setup
 
-A native TypeScript plugin for [Kilo CLI](https://github.com/kilocode/cli) with full [CESP v1.0](https://github.com/PeonPing/openpeon) conformance. Kilo CLI is a fork of OpenCode and uses the same plugin system — this installer downloads the OpenCode plugin and patches it for Kilo.
+A dedicated v1 TypeScript adapter for [Kilo CLI](https://github.com/kilocode/cli) with full [CESP v1.0](https://github.com/PeonPing/openpeon) conformance. It routes events through the installed peon-ping hook. Install peon-ping first using the platform installer above.
 
 **Quick install:**
 
@@ -975,7 +975,7 @@ A native TypeScript plugin for [Kilo CLI](https://github.com/kilocode/cli) with 
 curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo.sh | bash
 ```
 
-The installer copies `peon-ping.ts` to `~/.config/kilo/plugins/` and creates a config at `~/.config/kilo/peon-ping/config.json`. Packs are stored at the shared CESP path (`~/.openpeon/packs/`).
+The installer downloads the dedicated Kilo plugin to `~/.config/kilo/plugins/`, respecting `XDG_CONFIG_HOME`. Playback uses the main peon-ping installation and its configuration. Use `peon config` and `peon packs` to manage settings and packs.
 
 **Features:** Same as the [OpenCode adapter](#opencode-setup) — sound playback, CESP event mapping, desktop notifications, terminal focus detection, tab titles, pack switching, no-repeat logic, and spam detection.
 

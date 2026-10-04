@@ -848,7 +848,7 @@ bash ~/.claude/hooks/peon-ping/adapters/opencode/setup-icon.sh
 
 ### Kilo CLI 设置
 
-[Kilo CLI](https://github.com/kilocode/cli) 的原生 TypeScript 插件，完全符合 [CESP v1.0](https://github.com/PeonPing/openpeon) 规范。安装程序下载保留 Kilo v1 插件接口的专用适配器，不再下载并修改 OpenCode v2 插件。
+[Kilo CLI](https://github.com/kilocode/cli) 的原生 TypeScript 插件，完全符合 [CESP v1.0](https://github.com/PeonPing/openpeon) 规范。专用适配器保留 Kilo v1 插件接口，将事件转发给已安装的 peon-ping 钩子。请先使用平台安装程序安装 peon-ping。
 
 **快速安装：**
 
@@ -856,7 +856,7 @@ bash ~/.claude/hooks/peon-ping/adapters/opencode/setup-icon.sh
 curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/adapters/kilo.sh | bash
 ```
 
-安装程序将 `peon-ping.ts` 复制到 `~/.config/kilo/plugins/` 并在 `~/.config/kilo/peon-ping/config.json` 创建配置。语音包存储在共享 CESP 路径（`~/.openpeon/packs/`）。
+安装程序遵循 `XDG_CONFIG_HOME`，将专用 Kilo 插件复制到 `~/.config/kilo/plugins/`。播放使用主 peon-ping 安装及其配置。请用 `peon config` 和 `peon packs` 管理设置和语音包。
 
 **功能：** 与 [OpenCode 适配器](#opencode-设置)相同 — 声音播放、CESP 事件映射、桌面通知、终端焦点检测、标签页标题、语音包切换、不重复逻辑和刷屏检测。
 
