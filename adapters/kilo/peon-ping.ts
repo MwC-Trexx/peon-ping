@@ -64,18 +64,20 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
   }
 
   const cwd = directory || process.cwd()
-  const sessionId = `kilo-${Date.now()}`
+  const fallbackSessionId = `kilo-${Date.now()}`
   const subagentSessionIds = new Set<string>()
   const busySessions = new Set<string>()
   let lastSessionStart = 0
   const pendingQuestionIds = new Set<string>()
 
-  function firePeon(event: string, notificationType = ""): void {
+  function firePeon(event: string, notificationType = "", nativeSessionId?: string): void {
     const payload = JSON.stringify({
       hook_event_name: event,
       notification_type: notificationType,
       cwd,
-      session_id: sessionId,
+      session_id: typeof nativeSessionId === "string" && nativeSessionId
+        ? `kilo-${nativeSessionId}`
+        : fallbackSessionId,
       permission_mode: "",
       source: "kilo",
     })
@@ -107,7 +109,7 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
           }
           setTabTitle(`${projectName}: ready`)
           lastSessionStart = Date.now()
-          firePeon("SessionStart")
+          firePeon("SessionStart", "", info?.id ?? (event as any).properties?.sessionID)
           break
         }
 
@@ -128,7 +130,7 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
           if (isSubagent(sid)) break
           if (sid) busySessions.delete(sid)
           setTabTitle(`\u25cf ${projectName}: done`)
-          firePeon("Stop")
+          firePeon("Stop", "", sid)
           break
         }
 
@@ -137,13 +139,13 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
           if (isSubagent(sid)) break
           if (sid) busySessions.delete(sid)
           setTabTitle(`\u25cf ${projectName}: error`)
-          firePeon("PostToolUseFailure")
+          firePeon("PostToolUseFailure", "", sid)
           break
         }
 
         case "permission.asked": {
           setTabTitle(`\u25cf ${projectName}: needs approval`)
-          firePeon("PermissionRequest")
+          firePeon("PermissionRequest", "", (event as any).properties?.sessionID)
           break
         }
 
@@ -158,7 +160,7 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
           }
           pendingQuestionIds.add(requestId)
           setTabTitle(`\u25cf ${projectName}: needs input`)
-          firePeon("Notification", "elicitation_dialog")
+          firePeon("Notification", "elicitation_dialog", properties?.sessionID)
           break
         }
 
@@ -182,7 +184,7 @@ export const PeonPingPlugin: Plugin = async ({ directory }) => {
               busySessions.add(sid)
               if (Date.now() - lastSessionStart > 3000) {
                 setTabTitle(`${projectName}: working`)
-                firePeon("UserPromptSubmit")
+                firePeon("UserPromptSubmit", "", sid)
               }
             }
           } else {
