@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # --- Config ---
-$PluginUrl = "https://cdn.jsdelivr.net/gh/rafaelsnv/peon-ping@opencode-windows-adapter/adapters/opencode/peon-ping.ts"
+$PluginUrl = "https://cdn.jsdelivr.net/gh/PeonPing/peon-ping@main/adapters/opencode/peon-ping.ts"
 $RegistryUrl = "https://peonping.github.io/registry/index.json"
 $DefaultPack = "peon"
 
